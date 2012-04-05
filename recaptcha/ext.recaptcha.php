@@ -1,4 +1,5 @@
 <?php if ( ! defined('BASEPATH')) exit('No direct script access allowed');
+
 /*
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -33,16 +34,18 @@
 
 class Recaptcha_ext
 {
-	var $name			= 'reCAPTCHA';
-	var $version		= '1.1.0';
-	var $description	= "Replaces the built-in CAPTCHA on member registration and comment forms";
-	var $settings_exist	= 'y';
-	var $docs_url		= 'https://github.com/bhj/ExpressionEngine-reCAPTCHA';
-	var $settings		= array();
+	public $name			= 'reCAPTCHA';
+	public $version			= '1.1.0';
+	public $description		= "Replaces the built-in CAPTCHA on member registration and comment forms";
+	public $settings_exist	= 'y';
+	public $docs_url		= 'https://github.com/bhj/ExpressionEngine-reCAPTCHA';
+	public $settings		= array();
+
+	private $_error_msg;
 
 
 	/**
-	 * Constructor
+	 *   Constructor
 	 */	  
     function __construct($settings='')
     {
@@ -61,11 +64,12 @@ class Recaptcha_ext
 	 */
 	public function create_captcha()
 	{
-		// If settings are empty or wrong, try to fall back to the regular
-		// captcha and hope they haven't removed its input field yet
+		// Bail out if settings are empty or wrong
 		if ( ! $this->_validate_settings())
 		{
-			return;
+			$this->EE->extensions->end_script = TRUE;
+
+			return $this->_error_msg;
 		}
 
 		// Create our 'fake' entry in the captcha table
@@ -81,7 +85,7 @@ class Recaptcha_ext
 		// each load to ensure that stale (cached) challenges aren't shown
 		// @todo use something faster than window.onload, but without jQuery
 		$output = <<<PIE
-			<script type="text/javascript" src="http://www.google.com/recaptcha/api/js/recaptcha_ajax.js"></script>
+			<script type="text/javascript" src="https://www.google.com/recaptcha/api/js/recaptcha_ajax.js"></script>
 			<script type="text/javascript">
 				window.onload = function(){
 					Recaptcha.create('{$this->settings['public_key']}',
@@ -97,7 +101,7 @@ class Recaptcha_ext
 PIE;
 
 		$this->EE->extensions->end_script = TRUE;
-		
+
 		return $output;
 	}
 
@@ -111,11 +115,12 @@ PIE;
 	 */
 	public function validate_captcha()
 	{
-		// If settings are obviously wrong, try to fall back to the regular
-		// captcha and hope they haven't already removed its input field
-		if ($this->_validate_settings() !== TRUE)
+		// Bail out if settings are empty or wrong
+		if ( ! $this->_validate_settings())
 		{
-			return;
+			$this->EE->extensions->end_script = TRUE;
+
+			return $this->_error_msg;
 		}
 
 		// Stock recaptcha PHP library (v1.11 as of this writing)
@@ -165,9 +170,35 @@ PIE;
 		$settings = array(
 			'public_key' 	=>  '',
 			'private_key' 	=>  '',
-			'language'		=> array('s', array('en' => 'English', 'nl' => 'Dutch', 'fr' => 'French', 'de' => 'German', 'pt' => 'Portuguese', 'ru' => 'Russian', 'es' => 'Spanish', 'tr' => 'Turkish'), 'en'),
-			'theme'			=> array('r', array('red' => 'Red', 'white' => 'White', 'blackglass' => 'Blackglass', 'clean' => 'Clean'), 'red'),
-			'debug'			=> array('r', array('n' => 'Don\'t Show', 'y' => 'Show'), 'n')
+			'language'		=> array('s',
+				array(
+					'en' => 'English',
+					'nl' => 'Dutch',
+					'fr' => 'French',
+					'de' => 'German',
+					'pt' => 'Portuguese',
+					'ru' => 'Russian',
+					'es' => 'Spanish',
+					'tr' => 'Turkish'
+				),
+				'en'
+			),
+			'theme'	=> array('r',
+				array(
+					'red' 			=> 'Red',
+					'white' 		=> 'White',
+					'blackglass' 	=> 'Blackglass',
+					'clean' 		=> 'Clean'
+				),
+				'red'
+			),
+			'debug'	=> array('r',
+				array(
+					'y' => lang('yes'),
+					'n' => lang('no')
+				),
+				'n'
+			)
 		);
 
 		return $settings;
@@ -186,6 +217,8 @@ PIE;
 		// Have we been configured at all?
 		if (count($this->settings) < 2)
 		{
+			$this->_error_msg = 'reCAPTCHA: Not yet configured';
+
 			return FALSE;
 		}
 
@@ -194,8 +227,11 @@ PIE;
 		$this->settings['private_key'] = trim($this->settings['private_key']);
 			
 		// Is either key obviously invalid?
-		if (strlen($this->settings['public_key']) != 40 OR strlen($this->settings['private_key']) != 40)
+		if (strlen($this->settings['public_key'])  != 40 OR
+			strlen($this->settings['private_key']) != 40)
 		{
+			$this->_error_msg = 'reCAPTCHA: Invalid public or private key';
+
 			return FALSE;
 		}
 
@@ -212,45 +248,65 @@ PIE;
 	 */
 	public function activate_extension()
 	{
-		$this->EE->db->query($this->EE->db->insert_string('exp_extensions',
-				array(
-					'extension_id' => '',
-					'class'        => __CLASS__,
-					'method'       => 'create_captcha',
-					'hook'         => 'create_captcha_start',
-					'settings'     => '',
-					'priority'     => 5,
-					'version'      => $this->version,
-					'enabled'      => 'y'
-				)
+		$this->EE->db->insert('extensions',
+			array(
+				'class'        => __CLASS__,
+				'method'       => 'create_captcha',
+				'hook'         => 'create_captcha_start',
+				'settings'     => '',
+				'priority'     => 5,
+				'version'      => $this->version,
+				'enabled'      => 'y'
 			)
 		);
 
-	    $this->EE->db->query($this->EE->db->insert_string('exp_extensions',
-              array(
-					'extension_id' => '',
-					'class'        => __CLASS__,
-					'method'       => 'validate_captcha',
-					'hook'         => 'member_member_register_start',
-					'settings'     => '',
-					'priority'     => 1,
-					'version'      => $this->version,
-					'enabled'      => 'y'
-				)
+		$this->EE->db->insert('extensions',
+			array(
+				'class'        => __CLASS__,
+				'method'       => 'validate_captcha',
+				'hook'         => 'insert_comment_start',
+				'settings'     => '',
+				'priority'     => 1,
+				'version'      => $this->version,
+				'enabled'      => 'y'
 			)
 		);
 
-	    $this->EE->db->query($this->EE->db->insert_string('exp_extensions',
-              array(
-					'extension_id' => '',
-					'class'        => __CLASS__,
-					'method'       => 'validate_captcha',
-					'hook'         => 'insert_comment_start',
-					'settings'     => '',
-					'priority'     => 1,
-					'version'      => $this->version,
-					'enabled'      => 'y'
-				)
+		$this->EE->db->insert('extensions',
+			array(
+				'class'        => __CLASS__,
+				'method'       => 'validate_captcha',
+				'hook'         => 'member_member_register_start',
+				'settings'     => '',
+				'priority'     => 1,
+				'version'      => $this->version,
+				'enabled'      => 'y'
+			)
+		);
+
+		// Support the Solspace User hook
+		$this->EE->db->insert('extensions',
+			array(
+				'class'        => __CLASS__,
+				'method'       => 'validate_captcha',
+				'hook'         => 'user_register_start',
+				'settings'     => '',
+				'priority'     => 1,
+				'version'      => $this->version,
+				'enabled'      => 'y'
+			)
+		);
+
+		// Support the Solspace Freeform hook
+		$this->EE->db->insert('extensions',
+			array(
+				'class'        => __CLASS__,
+				'method'       => 'validate_captcha',
+				'hook'         => 'freeform_module_validate_end',
+				'settings'     => '',
+				'priority'     => 1,
+				'version'      => $this->version,
+				'enabled'      => 'y'
 			)
 		);
 	}
@@ -281,6 +337,7 @@ PIE;
 		$this->EE->db->where('class', __CLASS__);
     	$this->EE->db->delete('extensions');
 	}
+
 }
 // END CLASS
 
