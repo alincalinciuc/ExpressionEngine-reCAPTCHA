@@ -97,7 +97,7 @@ class Recaptcha_ext
 					);				
 				};
 			</script>
-			<div id="recaptcha_container"/>
+			<div id="recaptcha_container"></div>
 PIE;
 
 		$this->EE->extensions->end_script = TRUE;
