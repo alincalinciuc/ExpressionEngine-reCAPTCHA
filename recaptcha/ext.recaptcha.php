@@ -98,6 +98,7 @@ class Recaptcha_ext
 				};
 			</script>
 			<div id="recaptcha_container"></div>
+			<style type="text/css">input[name='captcha'] {display: none; }</style>
 PIE;
 
 		$this->EE->extensions->end_script = TRUE;
